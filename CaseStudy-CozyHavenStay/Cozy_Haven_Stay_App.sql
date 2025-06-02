@@ -495,3 +495,93 @@ CREATE INDEX idx_payments_status ON PAYMENTS(PAYMENT_STATUS);
 CREATE INDEX idx_reviews_user ON REVIEWS(USER_ID);
 CREATE INDEX idx_reviews_hotel ON REVIEWS(HOTEL_ID);
 CREATE INDEX idx_reviews_booking ON REVIEWS(BOOKING_ID);
+
+
+
+-----------------------Few Commands to check the operations--------------------
+-- 1. Create a FUNCTION to calculate total feedbacks for a hotel
+CREATE OR REPLACE FUNCTION GET_TOTAL_HOTEL_FEEDBACKS (
+    p_hotel_id IN HOTELS.HOTEL_ID%TYPE
+)
+RETURN NUMBER
+IS
+    v_total_feedbacks NUMBER := 0;
+BEGIN
+    SELECT COUNT(*)
+    INTO v_total_feedbacks
+    FROM REVIEWS
+    WHERE HOTEL_ID = p_hotel_id
+    AND IS_ACTIVE = 1; 
+
+    RETURN v_total_feedbacks;
+
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        
+        RETURN 0;
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('An error occurred: ' || SQLERRM);
+        RETURN -1; 
+END GET_TOTAL_HOTEL_FEEDBACKS;
+/
+SET SERVEROUTPUT ON;  -- To display result in console
+
+DECLARE
+    v_hotel_id        HOTELS.HOTEL_ID%TYPE := 1; 
+    v_hotel_name      HOTELS.HOTEL_NAME%TYPE;
+    v_feedback_count  NUMBER;
+BEGIN
+    SELECT HOTEL_NAME INTO v_hotel_name FROM HOTELS WHERE HOTEL_ID = v_hotel_id;
+
+    -- Call the function
+    v_feedback_count := GET_TOTAL_HOTEL_FEEDBACKS(v_hotel_id);
+
+    DBMS_OUTPUT.PUT_LINE('Hotel: ' || v_hotel_name || ' (ID: ' || v_hotel_id || ')');
+    DBMS_OUTPUT.PUT_LINE('Total Active Feedbacks: ' || v_feedback_count);
+
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('Error: Hotel with ID ' || v_hotel_id || ' not found.');
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('An unexpected error occurred: ' || SQLERRM);
+END;
+
+ 
+-- 2. Identify all registered users who haven't made any bookings yet, so we can target them with special offers.
+
+SET SERVEROUTPUT ON;
+
+DECLARE
+    CURSOR c_inactive_users IS
+        SELECT
+            u.USERNAME,
+            u.EMAIL,
+            u.REGISTRATION_DATE
+        FROM
+            USERS u
+        LEFT JOIN
+            BOOKINGS b ON u.USER_ID = b.USER_ID
+        WHERE
+            b.BOOKING_ID IS NULL -- User has no associated bookings
+            AND u.USER_TYPE = 'GUEST' -- Assuming we only care about 'GUEST' users
+        ORDER BY
+            u.REGISTRATION_DATE DESC;
+
+BEGIN
+    DBMS_OUTPUT.PUT_LINE(' Registered Guests with No Bookings ');
+    DBMS_OUTPUT.PUT_LINE('Username          | Email                            | Registration Date');
+    DBMS_OUTPUT.PUT_LINE('------------------+----------------------------------+-------------------');
+
+    FOR rec IN c_inactive_users LOOP
+        DBMS_OUTPUT.PUT_LINE(RPAD(rec.USERNAME, 18) || '| ' || RPAD(rec.EMAIL, 33) || '| ' || TO_CHAR(rec.REGISTRATION_DATE, 'DD-MON-YYYY'));
+    END LOOP;
+
+    DBMS_OUTPUT.PUT_LINE('------------------------------------------------------------------');
+
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('An error occurred: ' || SQLERRM);
+END;
+/
+
+
